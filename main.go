@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -34,11 +36,14 @@ var schemaSql string
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
 
+	fResources := flag.String("resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
+	flag.Parse()
+
 	ctx := context.Background()
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	db := must(sql.Open("sqlite", ":memory:"))
+	db := must(sql.Open("sqlite", "file::memory:?cache=shared"))
 	defer db.Close()
 
 	must(0, db.PingContext(ctx))
@@ -61,13 +66,9 @@ func main() {
 	config := must(clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile))
 	client := must(dynamic.NewForConfig(config))
 
-	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, 10*time.Second)
+	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, 1*time.Second)
 	defer factory.Shutdown()
 
-	gvr := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
-	genericInformer := factory.ForResource(gvr)
-
-	gvrlog := slog.With(slog.Any("gvr", gvr))
 	toJson := func(obj any) []byte {
 		u, ok := obj.(*unstructured.Unstructured)
 		if !ok {
@@ -76,25 +77,39 @@ func main() {
 		return must(u.MarshalJSON())
 	}
 
-	handle := must(genericInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj any) {
-			r := must(upsertStmt.ExecContext(ctx, toJson(obj)))
-			gvrlog.Debug("add", slog.Int64("id", must(r.LastInsertId())))
-		},
-		UpdateFunc: func(_, obj any) {
-			r := must(upsertStmt.ExecContext(ctx, toJson(obj)))
-			gvrlog.Debug("update", slog.Int64("id", must(r.LastInsertId())))
-		},
-		DeleteFunc: func(obj any) {
-			u, ok := obj.(*unstructured.Unstructured)
-			if !ok{
-				panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
-			}
-			r := must(deleteStmt.ExecContext(ctx, u.GetKind(), u.GetNamespace(), u.GetName()))
-			gvrlog.Debug("delete", slog.Int64("id", must(r.LastInsertId())))
-		},
-	}))
-	defer genericInformer.Informer().RemoveEventHandler(handle)
+	for resource := range strings.SplitSeq(*fResources, ",") {
+		slog.Info("Watching resource", slog.String("resource", resource))
+
+		gvr1, _ := schema.ParseResourceArg(resource)
+		if gvr1 == nil {
+			panic("Unsupported resource: " + resource)
+		}
+		//gvr := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
+		gvr := *gvr1
+		genericInformer := factory.ForResource(gvr)
+
+		gvrlog := slog.With(slog.Any("gvr", gvr))
+
+		handle := must(genericInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj any) {
+				r := must(upsertStmt.ExecContext(ctx, toJson(obj)))
+				gvrlog.Debug("add", slog.Int64("id", must(r.LastInsertId())))
+			},
+			UpdateFunc: func(_, obj any) {
+				r := must(upsertStmt.ExecContext(ctx, toJson(obj)))
+				gvrlog.Debug("update", slog.Int64("id", must(r.LastInsertId())))
+			},
+			DeleteFunc: func(obj any) {
+				u, ok := obj.(*unstructured.Unstructured)
+				if !ok {
+					panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
+				}
+				r := must(deleteStmt.ExecContext(ctx, u.GetKind(), u.GetNamespace(), u.GetName()))
+				gvrlog.Debug("delete", slog.Int64("id", must(r.LastInsertId())))
+			},
+		}))
+		defer genericInformer.Informer().RemoveEventHandler(handle)
+	}
 
 	factory.Start(ctx.Done())
 
@@ -102,14 +117,6 @@ func main() {
 	for v, ok := range synced {
 		slog.Info("cache synced", slog.Any("type", v), slog.Bool("ok", ok))
 	}
-
-	<-handle.HasSyncedChecker().Done()
-
-	var object string
-	rows := db.QueryRowContext(ctx, "select object from resources where kind = :kind limit 1;", sql.Named("kind", "Deployment"))
-	must("query", rows.Scan(&object))
-
-	slog.Info("result", slog.Any("object", object))
 
 	<-ctx.Done()
 }
