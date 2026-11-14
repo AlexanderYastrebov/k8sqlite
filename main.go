@@ -66,15 +66,15 @@ func main() {
 	config := must(clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile))
 	client := must(dynamic.NewForConfig(config))
 
-	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, 1*time.Second)
+	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, 10*time.Second)
 	defer factory.Shutdown()
 
-	toJson := func(obj any) []byte {
+	toUnstructured := func(obj any) *unstructured.Unstructured {
 		u, ok := obj.(*unstructured.Unstructured)
 		if !ok {
 			panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
 		}
-		return must(u.MarshalJSON())
+		return u
 	}
 
 	for resource := range strings.SplitSeq(*fResources, ",") {
@@ -92,20 +92,25 @@ func main() {
 
 		handle := must(genericInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
-				r := must(upsertStmt.ExecContext(ctx, toJson(obj)))
-				gvrlog.Debug("add", slog.Int64("id", must(r.LastInsertId())))
+				u := toUnstructured(obj)
+				must(upsertStmt.ExecContext(ctx, must(u.MarshalJSON())))
+				gvrlog.With().Debug("Add",
+					slog.String("ns", u.GetNamespace()),
+					slog.String("name", u.GetName()))
 			},
 			UpdateFunc: func(_, obj any) {
-				r := must(upsertStmt.ExecContext(ctx, toJson(obj)))
-				gvrlog.Debug("update", slog.Int64("id", must(r.LastInsertId())))
+				u := toUnstructured(obj)
+				must(upsertStmt.ExecContext(ctx, must(u.MarshalJSON())))
+				gvrlog.With().Debug("Update",
+					slog.String("ns", u.GetNamespace()),
+					slog.String("name", u.GetName()))
 			},
 			DeleteFunc: func(obj any) {
-				u, ok := obj.(*unstructured.Unstructured)
-				if !ok {
-					panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
-				}
-				r := must(deleteStmt.ExecContext(ctx, u.GetKind(), u.GetNamespace(), u.GetName()))
-				gvrlog.Debug("delete", slog.Int64("id", must(r.LastInsertId())))
+				u := toUnstructured(obj)
+				must(deleteStmt.ExecContext(ctx, u.GetKind(), u.GetNamespace(), u.GetName()))
+				gvrlog.With().Debug("Delete",
+					slog.String("ns", u.GetNamespace()),
+					slog.String("name", u.GetName()))
 			},
 		}))
 		defer genericInformer.Informer().RemoveEventHandler(handle)
