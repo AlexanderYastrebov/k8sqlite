@@ -4,11 +4,14 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"encoding/json/jsontext"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -39,7 +42,8 @@ func main() {
 	fResources := flag.String("resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
 	flag.Parse()
 
-	ctx := context.Background()
+	ctx, cancelCause := context.WithCancelCause(context.Background())
+
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -123,5 +127,61 @@ func main() {
 		slog.Info("cache synced", slog.Any("type", v), slog.Bool("ok", ok))
 	}
 
+	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
+		q := r.FormValue("q")
+		if q == "" {
+			http.Error(w, "q required", http.StatusBadRequest)
+			return
+		}
+
+		rows, err := db.QueryContext(r.Context(), q)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		writeJson(w, rows)
+	})
+
+	go func() { cancelCause(http.ListenAndServe(":8080", nil)) }()
+
 	<-ctx.Done()
+
+	slog.Info("Exiting", slog.Any("cause", context.Cause(ctx)))
+}
+
+func writeJson(w http.ResponseWriter, rows *sql.Rows) {
+	w.Header().Set("Content-Type", "application/jsonl")
+	enc := jsontext.NewEncoder(w)
+	columns := must(rows.ColumnTypes())
+	for rows.Next() {
+		rdata := make([]any, len(columns))
+		for i, typ := range columns {
+			rdata[i] = reflect.New(typ.ScanType()).Interface()
+		}
+		must("scan", rows.Scan(rdata...))
+		must("begin", enc.WriteToken(jsontext.BeginObject))
+		for i := range rdata {
+			must("name", enc.WriteToken(jsontext.String(columns[i].Name())))
+
+			val := reflect.ValueOf(rdata[i]).Elem().Interface()
+			switch vv := val.(type) {
+			case []byte:
+				must("val", enc.WriteToken(jsontext.String(string(vv))))
+			case string:
+				must("val", enc.WriteToken(jsontext.String(vv)))
+			case int64:
+				must("val", enc.WriteToken(jsontext.Int(vv)))
+			default:
+				slog.Error("TYPE", slog.Any("typ", fmt.Sprintf("%T", vv)))
+				must("val", enc.WriteToken(jsontext.String(fmt.Sprintf("%v", val))))
+			}
+		}
+		must("end", enc.WriteToken(jsontext.EndObject))
+	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
