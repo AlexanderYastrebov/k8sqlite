@@ -23,7 +23,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	_ "modernc.org/sqlite"
+	sqlite "modernc.org/sqlite"
 )
 
 func must[T any](v T, err error) T {
@@ -143,7 +143,18 @@ func main() {
 
 		writeJson(w, rows)
 	})
+	http.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
+		conn := must(db.Conn(ctx))
+		conn.Raw(func(driverConn any) error {
+			b := driverConn.(backuper)
+			backup := must(b.NewBackup("backup.sqlite3"))
+			must(backup.Step(-1))
+			return backup.Finish()
+		})
+		defer conn.Close()
 
+		w.WriteHeader(http.StatusNoContent)
+	})
 	go func() { cancelCause(http.ListenAndServe(":8080", nil)) }()
 
 	<-ctx.Done()
@@ -184,4 +195,8 @@ func writeJson(w http.ResponseWriter, rows *sql.Rows) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+type backuper interface {
+	NewBackup(dstUri string) (*sqlite.Backup, error)
 }
