@@ -38,8 +38,12 @@ var schemaSql string
 
 func main() {
 	slog.SetLogLoggerLevel(slog.LevelDebug)
-
-	fResources := flag.String("resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
+	flags := struct {
+		resources string
+		output    string
+	}{}
+	flag.StringVar(&flags.resources, "resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
+	flag.StringVar(&flags.output, "output", "", "output sqlite database file")
 	flag.Parse()
 
 	ctx, cancelCause := context.WithCancelCause(context.Background())
@@ -81,7 +85,7 @@ func main() {
 		return u
 	}
 
-	for resource := range strings.SplitSeq(*fResources, ",") {
+	for resource := range strings.SplitSeq(flags.resources, ",") {
 		slog.Info("Watching resource", slog.String("resource", resource))
 
 		gvr1, _ := schema.ParseResourceArg(resource)
@@ -127,6 +131,10 @@ func main() {
 		slog.Info("cache synced", slog.Any("type", v), slog.Bool("ok", ok))
 	}
 
+	if flags.output != "" {
+		must("backup", backup(ctx, db, flags.output))
+	}
+
 	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
 		q := r.FormValue("q")
 		if q == "" {
@@ -144,14 +152,11 @@ func main() {
 		writeJson(w, rows)
 	})
 	http.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
-		conn := must(db.Conn(ctx))
-		conn.Raw(func(driverConn any) error {
-			b := driverConn.(backuper)
-			backup := must(b.NewBackup("backup.sqlite3"))
-			must(backup.Step(-1))
-			return backup.Finish()
-		})
-		defer conn.Close()
+		if flags.output == "" {
+			http.Error(w, "Output is not specified", http.StatusConflict)
+			return
+		}
+		must("backup", backup(ctx, db, flags.output))
 
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -160,6 +165,26 @@ func main() {
 	<-ctx.Done()
 
 	slog.Info("Exiting", slog.Any("cause", context.Cause(ctx)))
+}
+
+func backup(ctx context.Context, db *sql.DB, path string) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return conn.Raw(func(driverConn any) error {
+		b := driverConn.(backuper)
+		backup, err := b.NewBackup(path)
+		if err != nil {
+			return err
+		}
+		all, err := backup.Step(-1)
+		if err != nil || all {
+			return fmt.Errorf("failed to step: %t, %w", all, err)
+		}
+		return backup.Finish()
+	})
 }
 
 func writeJson(w http.ResponseWriter, rows *sql.Rows) {
