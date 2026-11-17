@@ -41,16 +41,18 @@ func main() {
 	flags := struct {
 		resources string
 		output    string
+		watch     bool
 	}{}
 	flag.StringVar(&flags.resources, "resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
-	flag.StringVar(&flags.output, "output", "", "output sqlite database file")
+	flag.StringVar(&flags.output, "output", "", "output database file")
+	flag.BoolVar(&flags.watch, "watch", false, "watch updates")
 	flag.Parse()
 
 	ctx, cancelCause := context.WithCancelCause(context.Background())
+	defer func() { slog.Info("Exiting", slog.Any("cause", context.Cause(ctx))) }()
 
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
 	db := must(sql.Open("sqlite", "file::memory:?cache=shared"))
 	defer db.Close()
 
@@ -130,7 +132,15 @@ func main() {
 	}
 
 	if flags.output != "" {
+		slog.Info("Writing database")
 		must("backup", backup(ctx, db, flags.output))
+	} else {
+		slog.Info("Output is not specified, skipping")
+	}
+
+	if !flags.watch {
+		cancelCause(fmt.Errorf("not watching"))
+		return
 	}
 
 	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
@@ -161,8 +171,6 @@ func main() {
 	go func() { cancelCause(http.ListenAndServe(":8080", nil)) }()
 
 	<-ctx.Done()
-
-	slog.Info("Exiting", slog.Any("cause", context.Cause(ctx)))
 }
 
 func backup(ctx context.Context, db *sql.DB, path string) error {
