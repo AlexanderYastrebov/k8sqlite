@@ -42,10 +42,12 @@ func main() {
 		resources string
 		output    string
 		watch     bool
+		resync    time.Duration
 	}{}
 	flag.StringVar(&flags.resources, "resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
 	flag.StringVar(&flags.output, "output", "", "output database file")
 	flag.BoolVar(&flags.watch, "watch", false, "watch updates")
+	flag.DurationVar(&flags.resync, "resync", 0, "informer resync interval")
 	flag.Parse()
 
 	ctx, cancelCause := context.WithCancelCause(context.Background())
@@ -76,7 +78,7 @@ func main() {
 	config := must(clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile))
 	client := must(dynamic.NewForConfig(config))
 
-	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, 10*time.Second)
+	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, flags.resync)
 	defer factory.Shutdown()
 
 	toUnstructured := func(obj any) *unstructured.Unstructured {
