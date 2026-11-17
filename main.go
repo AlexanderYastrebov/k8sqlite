@@ -54,7 +54,7 @@ func main() {
 	db := must(sql.Open("sqlite", "file::memory:?cache=shared"))
 	defer db.Close()
 
-	must(0, db.PingContext(ctx))
+	must("ping", db.PingContext(ctx))
 	must(db.ExecContext(ctx, schemaSql))
 
 	upsertStmt := must(db.PrepareContext(ctx, `
@@ -78,22 +78,20 @@ func main() {
 	defer factory.Shutdown()
 
 	toUnstructured := func(obj any) *unstructured.Unstructured {
-		u, ok := obj.(*unstructured.Unstructured)
-		if !ok {
-			panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
+		if u, ok := obj.(*unstructured.Unstructured); ok {
+			return u
 		}
-		return u
+		panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
 	}
 
 	for resource := range strings.SplitSeq(flags.resources, ",") {
 		slog.Info("Watching resource", slog.String("resource", resource))
 
-		gvr1, _ := schema.ParseResourceArg(resource)
-		if gvr1 == nil {
+		gvrp, _ := schema.ParseResourceArg(resource)
+		if gvrp == nil {
 			panic("Unsupported resource: " + resource)
 		}
-		//gvr := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
-		gvr := *gvr1
+		gvr := *gvrp
 		genericInformer := factory.ForResource(gvr)
 
 		gvrlog := slog.With(slog.Any("gvr", gvr))
@@ -128,7 +126,7 @@ func main() {
 
 	synced := factory.WaitForCacheSync(ctx.Done())
 	for v, ok := range synced {
-		slog.Info("cache synced", slog.Any("type", v), slog.Bool("ok", ok))
+		slog.Info("Cache synced", slog.Any("type", v), slog.Bool("ok", ok))
 	}
 
 	if flags.output != "" {
@@ -211,7 +209,7 @@ func writeJson(w http.ResponseWriter, rows *sql.Rows) {
 			case int64:
 				must("val", enc.WriteToken(jsontext.Int(vv)))
 			default:
-				slog.Error("TYPE", slog.Any("typ", fmt.Sprintf("%T", vv)))
+				slog.Error("Unsupported type", slog.Any("type", fmt.Sprintf("%T", val)))
 				must("val", enc.WriteToken(jsontext.String(fmt.Sprintf("%v", val))))
 			}
 		}
