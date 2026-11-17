@@ -23,7 +23,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 
-	sqlite "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 func must[T any](v T, err error) T {
@@ -154,7 +154,6 @@ func main() {
 
 	if flags.output != "" {
 		http.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
-
 			must("backup", backup(ctx, db, flags.output))
 
 			w.WriteHeader(http.StatusNoContent)
@@ -178,7 +177,6 @@ func backup(ctx context.Context, db *sql.DB, path string) error {
 		backup, err := driverConn.(interface {
 			NewBackup(dstUri string) (*sqlite.Backup, error)
 		}).NewBackup(path)
-
 		if err != nil {
 			return err
 		}
