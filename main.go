@@ -44,7 +44,25 @@ func main() {
 		watch     bool
 		resync    time.Duration
 	}{}
-	flag.StringVar(&flags.resources, "resources", "deployments.v1.apps,pods.v1.", "comma-separated list of resources")
+	flag.StringVar(&flags.resources, "resources", strings.Join([]string{
+		"controllerrevisions.v1.apps",
+		"cronjobs.v1.batch",
+		"customresourcedefinitions.v1.apiextensions.k8s.io",
+		"daemonsets.v1.apps",
+		"deployments.v1.apps",
+		"horizontalpodautoscalers.v2.autoscaling",
+		"jobs.v1.batch",
+		"namespaces.v1.",
+		"nodes.v1.",
+		"persistentvolumeclaims.v1.",
+		"persistentvolumes.v1.",
+		"poddisruptionbudgets.v1.policy",
+		"pods.v1.",
+		"replicasets.v1.apps",
+		"serviceaccounts.v1.",
+		"services.v1.",
+		"statefulsets.v1.apps",
+	}, ","), "comma-separated list of resources")
 	flag.StringVar(&flags.output, "output", "", "output database file")
 	flag.BoolVar(&flags.watch, "watch", false, "watch updates")
 	flag.DurationVar(&flags.resync, "resync", 0, "informer resync interval")
