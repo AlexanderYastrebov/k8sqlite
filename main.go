@@ -151,15 +151,16 @@ func main() {
 
 		writeJson(w, rows)
 	})
-	http.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
-		if flags.output == "" {
-			http.Error(w, "Output is not specified", http.StatusConflict)
-			return
-		}
-		must("backup", backup(ctx, db, flags.output))
 
-		w.WriteHeader(http.StatusNoContent)
-	})
+	if flags.output != "" {
+		http.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
+
+			must("backup", backup(ctx, db, flags.output))
+
+			w.WriteHeader(http.StatusNoContent)
+		})
+	}
+
 	go func() { cancelCause(http.ListenAndServe(":8080", nil)) }()
 
 	<-ctx.Done()
