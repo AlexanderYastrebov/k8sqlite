@@ -174,14 +174,16 @@ func backup(ctx context.Context, db *sql.DB, path string) error {
 	}
 	defer conn.Close()
 	return conn.Raw(func(driverConn any) error {
-		b := driverConn.(backuper)
-		backup, err := b.NewBackup(path)
+		backup, err := driverConn.(interface {
+			NewBackup(dstUri string) (*sqlite.Backup, error)
+		}).NewBackup(path)
+
 		if err != nil {
 			return err
 		}
-		all, err := backup.Step(-1)
-		if err != nil || all {
-			return fmt.Errorf("failed to step: %t, %w", all, err)
+		more, err := backup.Step(-1)
+		if err != nil || more {
+			return fmt.Errorf("failed to step: %t, %w", more, err)
 		}
 		return backup.Finish()
 	})
@@ -220,8 +222,4 @@ func writeJson(w http.ResponseWriter, rows *sql.Rows) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-}
-
-type backuper interface {
-	NewBackup(dstUri string) (*sqlite.Backup, error)
 }
