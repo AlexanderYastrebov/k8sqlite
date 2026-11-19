@@ -94,7 +94,9 @@ func main() {
 	`))
 	defer deleteStmt.Close()
 
-	config := must(clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile))
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, nil)
+	config := must(kubeConfig.ClientConfig())
 	client := must(dynamic.NewForConfig(config))
 
 	factory := dynamicinformer.NewDynamicSharedInformerFactory(client, flags.resync)
