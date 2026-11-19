@@ -42,6 +42,7 @@ func main() {
 		output    string
 		watch     bool
 		resync    time.Duration
+		listen    string
 	}{}
 	flag.StringVar(&flags.resources, "resources", strings.Join([]string{
 		"controllerrevisions.v1.apps",
@@ -65,6 +66,7 @@ func main() {
 	flag.StringVar(&flags.output, "output", "", "output database file")
 	flag.BoolVar(&flags.watch, "watch", false, "watch updates")
 	flag.DurationVar(&flags.resync, "resync", 0, "informer resync interval")
+	flag.StringVar(&flags.listen, "listen", ":5351", "HTTP API address to listen")
 	flag.Parse()
 
 	ctx, cancelCause := context.WithCancelCause(context.Background())
@@ -187,7 +189,7 @@ func main() {
 		})
 	}
 
-	go func() { cancelCause(http.ListenAndServe(":8080", nil)) }()
+	go func() { cancelCause(http.ListenAndServe(flags.listen, nil)) }()
 
 	<-ctx.Done()
 }
