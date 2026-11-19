@@ -107,8 +107,9 @@ func main() {
 		panic(fmt.Sprintf("Unexpected type: %T %v", obj, obj))
 	}
 
+	shutDownEventHandlers := func() {}
 	for resource := range strings.SplitSeq(flags.resources, ",") {
-		slog.Info("Watching resource", slog.String("resource", resource))
+		slog.Info("Watching", slog.String("resource", resource))
 
 		gvrp, _ := schema.ParseResourceArg(resource)
 		if gvrp == nil {
@@ -119,7 +120,8 @@ func main() {
 
 		gvrlog := slog.With(slog.Any("gvr", gvr))
 
-		handle := must(genericInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		informer := genericInformer.Informer()
+		handle := must(informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj any) {
 				u := toUnstructured(obj)
 				must(upsertStmt.ExecContext(ctx, must(u.MarshalJSON())))
@@ -142,8 +144,14 @@ func main() {
 					slog.String("name", u.GetName()))
 			},
 		}))
-		defer genericInformer.Informer().RemoveEventHandler(handle)
+		prev := shutDownEventHandlers
+		shutDownEventHandlers = func() {
+			prev()
+			cache.ShutDownEventHandler(informer, handle)
+			slog.Info("Stopped watching", slog.String("resource", resource))
+		}
 	}
+	defer shutDownEventHandlers()
 
 	factory.Start(ctx.Done())
 
@@ -160,8 +168,7 @@ func main() {
 	}
 
 	if !flags.watch {
-		cancelCause(fmt.Errorf("not watching"))
-		return
+		shutDownEventHandlers()
 	}
 
 	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +196,10 @@ func main() {
 		})
 	}
 
-	go func() { cancelCause(http.ListenAndServe(flags.listen, nil)) }()
+	go func() {
+		slog.Info("Listening", slog.String("address", flags.listen))
+		cancelCause(http.ListenAndServe(flags.listen, nil))
+	}()
 
 	<-ctx.Done()
 }
