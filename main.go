@@ -82,7 +82,7 @@ func main() {
 
 	upsertStmt := must(db.PrepareContext(ctx, `
 		INSERT INTO resources(object) VALUES(?)
-		ON CONFLICT(kind, namespace, name) DO UPDATE SET object=object;
+		ON CONFLICT(kind, namespace, name) DO UPDATE SET object = excluded.object;
 	`))
 	defer upsertStmt.Close()
 
@@ -92,7 +92,7 @@ func main() {
 		AND namespace = ?
 		AND name = ?;
 	`))
-	defer upsertStmt.Close()
+	defer deleteStmt.Close()
 
 	config := must(clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile))
 	client := must(dynamic.NewForConfig(config))
