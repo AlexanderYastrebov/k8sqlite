@@ -64,7 +64,7 @@ func main() {
 		"statefulsets.v1.apps",
 	}, ","), "comma-separated list of resources")
 	flag.StringVar(&flags.output, "output", "", "output database file")
-	flag.BoolVar(&flags.watch, "watch", false, "watch updates")
+	flag.BoolVar(&flags.watch, "watch", true, "watch updates")
 	flag.DurationVar(&flags.resync, "resync", 0, "informer resync interval")
 	flag.StringVar(&flags.listen, "listen", ":5351", "HTTP API address to listen")
 	flag.Parse()
@@ -160,15 +160,20 @@ func main() {
 		slog.Info("Cache synced", slog.Any("type", v), slog.Bool("ok", ok))
 	}
 
-	if flags.output != "" {
-		slog.Info("Writing database")
-		must("backup", backup(ctx, db, flags.output))
-	} else {
-		slog.Info("Output is not specified, skipping")
-	}
-
 	if !flags.watch {
 		shutDownEventHandlers()
+	}
+
+	if flags.listen == "" {
+		if flags.output != "" {
+			slog.Info("Writing database")
+			shutDownEventHandlers()
+			must("backup", backup(ctx, db, flags.output))
+		} else {
+			slog.Warn("Output is not specified")
+		}
+		cancelCause(fmt.Errorf("skip listening"))
+		return
 	}
 
 	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
