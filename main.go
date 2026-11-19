@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -217,19 +216,21 @@ func backup(ctx context.Context, db *sql.DB, path string) error {
 func writeJson(w http.ResponseWriter, rows *sql.Rows) {
 	w.Header().Set("Content-Type", "application/jsonl")
 	enc := jsontext.NewEncoder(w)
-	columns := must(rows.ColumnTypes())
+	colNames := must(rows.Columns())
 	for rows.Next() {
-		rdata := make([]any, len(columns))
-		for i, typ := range columns {
-			rdata[i] = reflect.New(typ.ScanType()).Interface()
+		cols := make([]any, len(colNames))
+		for i := range cols {
+			cols[i] = &cols[i]
 		}
-		must("scan", rows.Scan(rdata...))
+		must("scan", rows.Scan(cols...))
 		must("begin", enc.WriteToken(jsontext.BeginObject))
-		for i := range rdata {
-			must("name", enc.WriteToken(jsontext.String(columns[i].Name())))
+		for i, value := range cols {
+			if value == nil {
+				continue
+			}
+			must("name", enc.WriteToken(jsontext.String(colNames[i])))
 
-			val := reflect.ValueOf(rdata[i]).Elem().Interface()
-			switch vv := val.(type) {
+			switch vv := value.(type) {
 			case []byte:
 				must("val", enc.WriteToken(jsontext.String(string(vv))))
 			case string:
@@ -237,8 +238,8 @@ func writeJson(w http.ResponseWriter, rows *sql.Rows) {
 			case int64:
 				must("val", enc.WriteToken(jsontext.Int(vv)))
 			default:
-				slog.Error("Unsupported type", slog.Any("type", fmt.Sprintf("%T", val)))
-				must("val", enc.WriteToken(jsontext.String(fmt.Sprintf("%v", val))))
+				slog.Error("Unsupported type", slog.Any("type", fmt.Sprintf("%T", value)))
+				must("value", enc.WriteToken(jsontext.String(fmt.Sprintf("%v", value))))
 			}
 		}
 		must("end", enc.WriteToken(jsontext.EndObject))
