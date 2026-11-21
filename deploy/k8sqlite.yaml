@@ -18,7 +18,7 @@ spec:
       serviceAccountName: k8sqlite
       containers:
         - name: k8sqlite
-          image: k8sqlite:test
+          image: ghcr.io/alexanderyastrebov/k8sqlite:latest
           args:
             - --listen
             - 0.0.0.0:5351
