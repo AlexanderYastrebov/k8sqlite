@@ -36,7 +36,6 @@ func must[T any](v T, err error) T {
 var schemaSql string
 
 func main() {
-	slog.SetLogLoggerLevel(slog.LevelDebug)
 	flags := struct {
 		resources string
 		output    string
@@ -67,6 +66,14 @@ func main() {
 	flag.BoolVar(&flags.watch, "watch", true, "watch updates")
 	flag.DurationVar(&flags.resync, "resync", 0, "informer resync interval")
 	flag.StringVar(&flags.listen, "listen", ":5351", "HTTP API address to listen")
+	flag.Func("log", "log level: DEBUG, INFO, WARN (default \"INFO\")", func(s string) error {
+		var lvl slog.Level
+		if err := lvl.UnmarshalText([]byte(s)); err != nil {
+			return err
+		}
+		slog.SetLogLoggerLevel(lvl)
+		return nil
+	})
 	flag.Parse()
 
 	ctx, cancelCause := context.WithCancelCause(context.Background())
