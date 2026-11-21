@@ -19,9 +19,6 @@ spec:
       containers:
         - name: k8sqlite
           image: ghcr.io/alexanderyastrebov/k8sqlite:latest
-          args:
-            - --listen
-            - 0.0.0.0:5351
           ports:
             - containerPort: 5351
           resources:

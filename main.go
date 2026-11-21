@@ -41,7 +41,7 @@ func main() {
 		output    string
 		watch     bool
 		resync    time.Duration
-		listen    string
+		address   string
 	}{}
 	flag.StringVar(&flags.resources, "resources", strings.Join([]string{
 		"controllerrevisions.v1.apps",
@@ -65,7 +65,7 @@ func main() {
 	flag.StringVar(&flags.output, "output", "", "output database file")
 	flag.BoolVar(&flags.watch, "watch", true, "watch updates")
 	flag.DurationVar(&flags.resync, "resync", 0, "informer resync interval")
-	flag.StringVar(&flags.listen, "listen", ":5351", "HTTP API address to listen")
+	flag.StringVar(&flags.address, "address", ":5351", "HTTP API address to listen")
 	flag.Func("log", "log level: DEBUG, INFO, WARN (default \"INFO\")", func(s string) error {
 		var lvl slog.Level
 		if err := lvl.UnmarshalText([]byte(s)); err != nil {
@@ -173,7 +173,7 @@ func main() {
 		shutDownEventHandlers()
 	}
 
-	if flags.listen == "" {
+	if flags.address == "" {
 		if flags.output != "" {
 			slog.Info("Writing database")
 			shutDownEventHandlers()
@@ -211,8 +211,8 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("Listening", slog.String("address", flags.listen))
-		cancelCause(http.ListenAndServe(flags.listen, nil))
+		slog.Info("Listening", slog.String("address", flags.address))
+		cancelCause(http.ListenAndServe(flags.address, nil))
 	}()
 
 	<-ctx.Done()
