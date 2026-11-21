@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8sqlite
+  labels:
+    app: k8sqlite
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      deployment: k8sqlite
+  template:
+    metadata:
+      labels:
+        app: k8sqlite
+        deployment: k8sqlite
+    spec:
+      serviceAccountName: k8sqlite
+      containers:
+        - name: k8sqlite
+          image: k8sqlite:test
+          args:
+            - --listen
+            - 0.0.0.0:5351
+          ports:
+            - containerPort: 5351
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
