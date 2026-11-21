@@ -7,6 +7,7 @@ import (
 	"encoding/json/jsontext"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -185,14 +186,14 @@ func main() {
 		return
 	}
 
-	http.HandleFunc("/query", func(w http.ResponseWriter, r *http.Request) {
-		q := r.FormValue("q")
-		if q == "" {
-			http.Error(w, "q required", http.StatusBadRequest)
+	http.Handle("POST /query", http.MaxBytesHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid query: %v", err), http.StatusBadRequest)
 			return
 		}
 
-		rows, err := db.QueryContext(r.Context(), q)
+		rows, err := db.QueryContext(r.Context(), string(q))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -200,10 +201,10 @@ func main() {
 		defer rows.Close()
 
 		writeJson(w, rows)
-	})
+	}), 1024))
 
 	if flags.output != "" {
-		http.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("POST /backup", func(w http.ResponseWriter, r *http.Request) {
 			must("backup", backup(ctx, db, flags.output))
 
 			w.WriteHeader(http.StatusNoContent)

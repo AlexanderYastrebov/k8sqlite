@@ -20,7 +20,7 @@ kubectl port-forward deploy/k8sqlite 5351
 
 and query:
 ```sh
-curl localhost:5351/query --data-urlencode "q=select count(*) as total, kind from resources group by kind order by total desc;"
+curl localhost:5351/query -d "select count(*) as total, kind from resources group by kind order by total desc;"
 ```
 
 ```json
