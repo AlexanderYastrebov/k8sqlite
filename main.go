@@ -209,6 +209,8 @@ func main() {
 
 	if flags.output != "" {
 		http.HandleFunc("POST /backup", func(w http.ResponseWriter, r *http.Request) {
+			slog.Info("Writing database")
+
 			must("backup", backup(ctx, db, flags.output))
 
 			w.WriteHeader(http.StatusNoContent)
