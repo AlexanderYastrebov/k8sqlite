@@ -1,7 +1,7 @@
 CREATE TABLE resources (
-    kind TEXT NOT NULL GENERATED ALWAYS AS (jsonb_extract(object, '$.kind')),
-    namespace TEXT NOT NULL GENERATED ALWAYS AS (coalesce(jsonb_extract(object, '$.metadata.namespace'), '')),
-    name TEXT NOT NULL GENERATED ALWAYS AS (jsonb_extract(object, '$.metadata.name')),
+    kind TEXT NOT NULL GENERATED ALWAYS AS (object->>'$.kind'),
+    namespace TEXT NOT NULL GENERATED ALWAYS AS (coalesce(object->>'$.metadata.namespace', '')),
+    name TEXT NOT NULL GENERATED ALWAYS AS (object->>'$.metadata.name'),
     object JSONB NOT NULL
 );
 
