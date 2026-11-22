@@ -15,7 +15,7 @@ or deploy into the cluster:
 ```sh
 kubectl apply -f deploy/
 
-kubectl port-forward deploy/k8sqlite 5351
+kubectl port-forward service/k8sqlite 5351
 ```
 
 and query:

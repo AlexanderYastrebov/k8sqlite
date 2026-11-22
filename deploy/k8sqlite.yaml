@@ -32,3 +32,15 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: k8sqlite
+spec:
+  selector:
+    deployment: k8sqlite
+  ports:
+    - protocol: TCP
+      port: 5351
+      targetPort: 5351
