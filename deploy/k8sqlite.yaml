@@ -21,6 +21,10 @@ spec:
           image: ghcr.io/alexanderyastrebov/k8sqlite:latest
           ports:
             - containerPort: 5351
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 5351
           resources:
             limits:
               cpu: 100m

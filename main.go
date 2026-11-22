@@ -186,6 +186,10 @@ func main() {
 		return
 	}
 
+	http.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	http.Handle("POST /query", http.MaxBytesHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q, err := io.ReadAll(r.Body)
 		if err != nil {
